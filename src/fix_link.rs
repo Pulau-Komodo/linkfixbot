@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 use itertools::Itertools;
-use regex::Regex;
+use regex::{Captures, Regex};
 use serenity::all::{
 	CommandInteraction, CommandType, Context, CreateCommand, CreateInteractionResponse,
 	CreateInteractionResponseMessage,
@@ -24,11 +24,7 @@ pub async fn fix_link(context: &Context, interaction: CommandInteraction) {
 	};
 	//println!("Parsing content: \"{}\"", message.content);
 	let content = &message.content;
-	let output = embed_twitter(content)
-		.chain(embed_instagram(content))
-		.chain(embed_reddit(content))
-		.chain(unshort_youtube(content))
-		.join("\n");
+	let output = find_and_fix(content).join("\n");
 
 	if output.is_empty() {
 		let _ = interaction
@@ -54,59 +50,95 @@ pub async fn fix_link(context: &Context, interaction: CommandInteraction) {
 		.await;
 }
 
-static TWITTER_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-	Regex::new(r"(?i)(?:\s|^)(<)?https://x.com/([0-9a-z_]+/status/[0-9]+)(>)?(?:\s|$)").unwrap()
-});
-
-fn embed_twitter(content: &str) -> impl Iterator<Item = String> + '_ {
-	TWITTER_REGEX.captures_iter(content).filter_map(|find| {
-		(find.get(1).is_some() == find.get(3).is_some())
-			.then(|| format!("https://fixupx.com/{}", &find[2]))
-	})
+fn find_and_fix(text: &str) -> impl Iterator<Item = String> + '_ {
+	let closing_bracket = MEGAPATTERN.0.captures_len() - 1;
+	MEGAPATTERN
+		.0
+		.captures_iter(&text)
+		.filter(move |find| find.get(1).is_some() == find.get(closing_bracket).is_some())
+		.filter_map(|find| {
+			find.iter()
+				.skip(2)
+				.position(|group| group.is_some())
+				.map(|index| {
+					let mut offset = 0;
+					for replacement in &MEGAPATTERN.1 {
+						if (offset..offset + replacement.capture_group_count).contains(&index) {
+							return (replacement.closure)(&find, offset + 1);
+						}
+						offset += replacement.capture_group_count;
+					}
+					return String::from("");
+				})
+		})
 }
 
-static INSTAGRAM_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-	Regex::new(
-		r"(?i)(?:\s|^)(<)?https://www.instagram.com/(p|reel)/([-0-9a-z]+)(?:/\S*)(>)?(?:\s|$)",
-	)
-	.unwrap()
-});
-
-fn embed_instagram(content: &str) -> impl Iterator<Item = String> + '_ {
-	INSTAGRAM_REGEX.captures_iter(content).filter_map(|find| {
-		(find.get(1).is_some() == find.get(4).is_some())
-			.then(|| format!("https://ddinstagram.com/{}/{}/", &find[2], &find[3]))
-	})
+pub struct Replacement {
+	pattern: &'static str,
+	capture_group_count: usize,
+	closure: Box<dyn Send + Sync + 'static + Fn(&Captures, usize) -> String>,
 }
 
-static REDDIT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-	Regex::new(
-		r"(?i)(?:\s|^)(<)?https://www.reddit.com/r/([0-9a-z_]+)/(comments)/([0-9a-z]+)/[0-9a-z_]+/?(>)?(?:\s|$)",
-	)
-	.unwrap()
-});
+impl Replacement {
+	fn new(
+		pattern: &'static str,
+		capture_group_count: usize,
+		closure: impl Send + Sync + 'static + Fn(&Captures, usize) -> String,
+	) -> Self {
+		Self {
+			pattern,
+			capture_group_count,
+			closure: Box::new(closure),
+		}
+	}
+}
 
-fn embed_reddit(content: &str) -> impl Iterator<Item = String> + '_ {
-	REDDIT_REGEX.captures_iter(content).filter_map(|find| {
-		(find.get(1).is_some() == find.get(5).is_some()).then(|| {
+static MEGAPATTERN: LazyLock<(Regex, [Replacement; 4])> = LazyLock::new(|| {
+	let twitter = Replacement::new(
+		r"https://(?:x|twitter).com/([0-9a-z_]+/status/[0-9]+)",
+		1,
+		|find, offset| format!("https://fixupx.com/{}", &find[offset + 1]),
+	);
+	let instagram = Replacement::new(
+		r"https://www.instagram.com/(p|reel)/([-0-9a-z]+)(?:/\S*)?",
+		2,
+		|find, offset| {
+			format!(
+				"https://www.ddinstagram.com/{}/{}/",
+				&find[offset + 1],
+				&find[offset + 2]
+			)
+		},
+	);
+	let reddit = Replacement::new(
+		r"https://www.reddit.com/r/([0-9a-z_]+)/(comments)/([0-9a-z]+)/[0-9a-z_]+/?",
+		3,
+		|find, offset| {
 			format!(
 				"https://www.rxddit.com/r/{}/{}/{}/_/",
-				&find[2], &find[3], &find[4]
+				&find[offset + 1],
+				&find[offset + 2],
+				&find[offset + 3]
 			)
-		})
-	})
-}
-
-static YOUTUBE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-	Regex::new(r"(?i)(?:\s|^)(<)?https://www.youtube.com/shorts/([-0-9a-z_]+)(>)?(?:\s|$)").unwrap()
+		},
+	);
+	let youtube = Replacement::new(
+		r"https://www.youtube.com/shorts/([-0-9a-z_]+)",
+		1,
+		|find, offset| format!("<https://www.youtube.com/watch?v={}>", &find[offset + 1]),
+	);
+	let replacements = [twitter, instagram, reddit, youtube];
+	let inner = replacements
+		.iter()
+		.map(|replacement| replacement.pattern)
+		.join("|");
+	let start = r"(?i)(?:\s|^)(<)?(?:";
+	let end = r")(>)?(?:\s|$)";
+	(
+		Regex::new(&format!("{start}{inner}{end}")).unwrap(),
+		replacements,
+	)
 });
-
-fn unshort_youtube(content: &str) -> impl Iterator<Item = String> + '_ {
-	YOUTUBE_REGEX.captures_iter(content).filter_map(|find| {
-		(find.get(1).is_some() == find.get(3).is_some())
-			.then(|| format!("<https://www.youtube.com/watch?v={}>", &find[2]))
-	})
-}
 
 pub fn create_command() -> CreateCommand {
 	CreateCommand::new("fix link")
@@ -119,12 +151,18 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_twitter() {
+	fn test_name() {
+		let string = r"https://www.instagram.com/reel/abc blahblah <https://www.reddit.com/r/fictitious/comments/abc/def>";
+		let mut links = find_and_fix(&string);
 		assert_eq!(
-			TWITTER_REGEX
-				.captures_iter("https://x.com/ShouldHaveCat/status/1825533507487060046")
-				.count(),
-			1
+			links.next(),
+			Some(String::from("https://www.ddinstagram.com/reel/abc/"))
+		);
+		assert_eq!(
+			links.next(),
+			Some(String::from(
+				"https://www.rxddit.com/r/fictitious/comments/abc/_/"
+			))
 		);
 	}
 }
