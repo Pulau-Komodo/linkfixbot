@@ -4,7 +4,7 @@ use serenity::{
 	async_trait,
 };
 
-use crate::fix_link::{create_command, fix_link};
+use crate::{context_menu, slash_command};
 
 pub struct DiscordEventHandler;
 
@@ -15,15 +15,18 @@ impl EventHandler for DiscordEventHandler {
 			return;
 		};
 		match interaction.data.name.as_str() {
-			"fix link" => fix_link(&context, interaction).await,
-			"blah" => (),
+			"fix link" => context_menu::fix_links(&context, interaction).await,
+			"fix" => slash_command::fix_links(&context, interaction).await,
 			_ => (),
 		}
 	}
 	async fn ready(&self, context: Context, _ready: Ready) {
 		println!("Ready");
 		let arg = std::env::args().nth(1);
-		let commands = vec![create_command()];
+		let commands = vec![
+			context_menu::create_command(),
+			slash_command::create_command(),
+		];
 		if Some("register") == arg.as_deref() {
 			for guild in context.cache.guilds() {
 				let commands = guild
