@@ -15,7 +15,7 @@ impl EventHandler for DiscordEventHandler {
 			return;
 		};
 		match interaction.data.name.as_str() {
-			"fix link" => context_menu::fix_links(&context, interaction).await,
+			"fix links" => context_menu::fix_links(&context, interaction).await,
 			"fix" => slash_command::fix_links(&context, interaction).await,
 			_ => (),
 		}
