@@ -4,7 +4,12 @@ use serenity::all::*;
 use crate::{fix_link::find_and_fix, reply_shortcuts::ReplyShortcuts};
 
 pub async fn fix_links(context: &Context, interaction: CommandInteraction) {
-	let Some(content) = interaction.data.options.first().and_then(|option| option.value.as_str()) else {
+	let Some(content) = interaction
+		.data
+		.options
+		.first()
+		.and_then(|option| option.value.as_str())
+	else {
 		return;
 	};
 	let output = find_and_fix(content).join("\n");
@@ -22,9 +27,12 @@ pub fn create_command() -> CreateCommand {
 		.description(
 			"Replace all relevant links with embed-friendly or non-Youtube shorts alternatives.",
 		)
-		.add_option(CreateCommandOption::new(
-			CommandOptionType::String,
-			"links",
-			"All the links to replace.",
-		).required(true))
+		.add_option(
+			CreateCommandOption::new(
+				CommandOptionType::String,
+				"links",
+				"All the links to replace.",
+			)
+			.required(true),
+		)
 }
