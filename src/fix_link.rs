@@ -56,7 +56,7 @@ impl Replacement {
 	}
 }
 
-static MEGAPATTERN: LazyLock<(Regex, [Replacement; 4])> = LazyLock::new(|| {
+static MEGAPATTERN: LazyLock<(Regex, [Replacement; 6])> = LazyLock::new(|| {
 	let twitter = Replacement::new(
 		r"https://(?:x|twitter)\.com/([0-9a-z_]+/status/[0-9]+)\S*",
 		|find, offset| format!("https://fixupx.com/{}", &find[offset + 1]),
@@ -66,6 +66,16 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 4])> = LazyLock::new(|| {
 		|find, offset| {
 			format!(
 				"https://www.ddinstagram.com/{}/{}/",
+				&find[offset + 1],
+				&find[offset + 2],
+			)
+		},
+	);
+	let tiktok = Replacement::new(
+		r"https://www\.tiktok\.com/@([a-z0-9_\.]+)/video/([0-9]+)\S*",
+		|find, offset| {
+			format!(
+				"https://www.vxtiktok.com/@{}/video/{}",
 				&find[offset + 1],
 				&find[offset + 2],
 			)
@@ -83,11 +93,22 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 4])> = LazyLock::new(|| {
 			)
 		},
 	);
+	let reddit_share = Replacement::new(
+		r"https://(www|old)\.reddit\.com/r/([0-9a-z_]+)/s/([0-9a-z]+)/?\S*",
+		|find, offset| {
+			format!(
+				"https://{}.rxddit.com/r/{}/s/{} (⚠️ this is a share link ⚠️)",
+				&find[offset + 1],
+				&find[offset + 2],
+				&find[offset + 3],
+			)
+		},
+	);
 	let youtube = Replacement::new(
 		r"https://www\.youtube\.com/shorts/([-0-9a-z_]+)\S*",
 		|find, offset| format!("<https://www.youtube.com/watch?v={}>", &find[offset + 1]),
 	);
-	let replacements = [twitter, instagram, reddit, youtube];
+	let replacements = [twitter, instagram, tiktok, reddit, reddit_share, youtube];
 	let inner = replacements
 		.iter()
 		.map(|replacement| replacement.pattern)
