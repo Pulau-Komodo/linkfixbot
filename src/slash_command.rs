@@ -35,4 +35,9 @@ pub fn create_command() -> CreateCommand {
 			)
 			.required(true),
 		)
+		.contexts(vec![
+			InteractionContext::Guild,
+			InteractionContext::BotDm,
+			InteractionContext::PrivateChannel,
+		])
 }

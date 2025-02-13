@@ -27,4 +27,9 @@ pub fn create_command() -> CreateCommand {
 	CreateCommand::new("fix links")
 		.description("")
 		.kind(CommandType::Message)
+		.contexts(vec![
+			InteractionContext::Guild,
+			InteractionContext::BotDm,
+			InteractionContext::PrivateChannel,
+		])
 }
