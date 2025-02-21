@@ -5,14 +5,12 @@ use regex::{Captures, Regex};
 
 pub fn find_and_fix(text: &str) -> impl Iterator<Item = String> + '_ {
 	let (regex, replacements) = &*MEGAPATTERN;
-	let closing_bracket = regex.captures_len() - 1;
 	text.split_ascii_whitespace()
 		.flat_map(|text| regex.captures_iter(text))
-		.filter(move |find| find.get(1).is_some() == find.get(closing_bracket).is_some())
 		.map(|find| {
 			let index = find
 				.iter()
-				.skip(2)
+				.skip(1)
 				.position(|group| group.is_some())
 				.unwrap(); // If it matched the outer regex, it needs to match some group, because all subsections have groups.
 
@@ -20,15 +18,19 @@ pub fn find_and_fix(text: &str) -> impl Iterator<Item = String> + '_ {
 			let replacement = replacements
 				.iter()
 				.find(|replacement| {
-					if (offset..offset + replacement.capture_group_count).contains(&index) {
+					if (offset..offset + replacement.capture_group_count * 2).contains(&index) {
 						true
 					} else {
-						offset += replacement.capture_group_count;
+						offset += replacement.capture_group_count * 2;
 						false
 					}
 				})
 				.unwrap(); // One of the replacements must match the capture group found.
-			(replacement.closure)(&find, offset + 1)
+
+			if !(offset..offset + replacement.capture_group_count).contains(&index) {
+				offset += replacement.capture_group_count;
+			}
+			(replacement.closure)(&find, offset)
 		})
 }
 
@@ -56,7 +58,17 @@ impl Replacement {
 	}
 }
 
-static MEGAPATTERN: LazyLock<(Regex, [Replacement; 6])> = LazyLock::new(|| {
+impl std::fmt::Debug for Replacement {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Replacement")
+			.field("pattern", &self.pattern)
+			.field("capture_group_count", &self.capture_group_count)
+			.field("closure", &"some closure I cannot print")
+			.finish()
+	}
+}
+
+static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
 	let twitter = Replacement::new(
 		r"https://(?:x|twitter)\.com/([0-9a-z_]+/status/[0-9]+)\S*",
 		|find, offset| format!("https://fixupx.com/{}", &find[offset + 1]),
@@ -105,18 +117,51 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 6])> = LazyLock::new(|| {
 		},
 	);
 	let youtube = Replacement::new(
-		r"https://www\.youtube\.com/shorts/([-0-9a-z_]+)\S*",
+		r"https://(?:www\.)?youtube\.com/shorts/([-0-9a-z_]+)\S*",
 		|find, offset| format!("<https://www.youtube.com/watch?v={}>", &find[offset + 1]),
 	);
-	let replacements = [twitter, instagram, tiktok, reddit, reddit_share, youtube];
+	let amazon = Replacement::new(
+		r"https://www\.amazon\.(com|ca|co\.(?:uk|jp)|de|fr|it|es|in|nl|sg)/[^\s/]+/dp/([A-Z0-9]+)\S*",
+		|find, offset| {
+			format!(
+				"<https://www.amazon.{}/dp/{}>",
+				&find[offset + 1],
+				&find[offset + 2]
+			)
+		},
+	);
+	let amazon2 = Replacement::new(
+		r"https://www\.amazon\.(com|ca|co\.(?:uk|jp)|de|fr|it|es|in|nl|sg)/gp/product/([A-Z0-9])+\S*",
+		|find, offset| {
+			format!(
+				"<https://www.amazon.{}/dp/{}>",
+				&find[offset + 1],
+				&find[offset + 2]
+			)
+		},
+	);
+	let replacements = [
+		twitter,
+		instagram,
+		tiktok,
+		reddit,
+		reddit_share,
+		youtube,
+		amazon,
+		amazon2,
+	];
+	//dbg!(&replacements);
 	let inner = replacements
 		.iter()
-		.map(|replacement| replacement.pattern)
+		.flat_map(|replacement| {
+			[
+				format!("<{}>", replacement.pattern),
+				String::from(replacement.pattern),
+			]
+		})
 		.join("|");
-	let start = r"(?i)^(<)?(?:";
-	let end = r")(>)?$";
 	(
-		Regex::new(&format!("{start}{inner}{end}")).unwrap(),
+		Regex::new(&format!("(?i)^(?:{inner})$")).unwrap(),
 		replacements,
 	)
 });
@@ -126,9 +171,62 @@ mod tests {
 	use super::*;
 
 	#[test]
+	fn find_instagram() {
+		let string = "blahblah https://www.instagram.com/reel/abc blahblah";
+		let find = find_and_fix(string).next();
+		assert_eq!(
+			find,
+			Some(String::from("https://www.ddinstagram.com/reel/abc/"))
+		);
+	}
+	#[test]
+	fn find_reddit() {
+		let string = "blahblah <https://www.reddit.com/r/fictitious/comments/abc/def> blahblah";
+		let find = find_and_fix(string).next();
+		assert_eq!(
+			find,
+			Some(String::from(
+				"https://www.rxddit.com/r/fictitious/comments/abc/_/"
+			))
+		);
+	}
+	#[test]
+	fn find_twitter() {
+		let string = "blahblah https://x.com/fictitious/status/0123 blahblah";
+		let find = find_and_fix(string).next();
+		assert_eq!(
+			find,
+			Some(String::from("https://fixupx.com/fictitious/status/0123"))
+		);
+	}
+	#[test]
+	fn find_youtube() {
+		let string = "blahblah https://www.youtube.com/shorts/GX5wEDmbpQA blahblah";
+		let find = find_and_fix(string).next();
+		assert_eq!(
+			find,
+			Some(String::from(
+				"<https://www.youtube.com/watch?v=GX5wEDmbpQA>"
+			))
+		);
+	}
+	#[test]
+	fn find_amazon() {
+		let string = "https://www.amazon.ca/Some-Item-With-Code-ABC012/dp/ABC012?all_sorts_of=tracking.data&other_random=bs&believability_of_the_volume=false";
+		let find = find_and_fix(&string).next();
+		assert_eq!(
+			find,
+			Some(String::from("<https://www.amazon.ca/dp/ABC012>"))
+		);
+	}
+	#[test]
 	fn find_each() {
-		let string = r"https://www.instagram.com/reel/abc blahblah <https://www.reddit.com/r/fictitious/comments/abc/def> https://x.com/fictitious/status/0123 and https://www.youtube.com/shorts/GX5wEDmbpQA";
+		let string = r"hey <https://www.amazon.ca/Some-Item-With-Code-ABC012/dp/ABC012?all_sorts_of=tracking.data&other_random=bs&believability_of_the_volume=false> and https://www.instagram.com/reel/abc blahblah <https://www.reddit.com/r/fictitious/comments/abc/def> https://x.com/fictitious/status/0123 and https://www.youtube.com/shorts/GX5wEDmbpQA";
 		let mut links = find_and_fix(&string);
+		assert_eq!(
+			links.next(),
+			Some(String::from("<https://www.amazon.ca/dp/ABC012>"))
+		);
 		assert_eq!(
 			links.next(),
 			Some(String::from("https://www.ddinstagram.com/reel/abc/"))
