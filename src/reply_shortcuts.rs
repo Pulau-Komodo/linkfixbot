@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use serenity::{
+	Result as SerenityResult,
 	all::CommandInteraction,
 	async_trait,
 	builder::{CreateInteractionResponse, CreateInteractionResponseMessage},
 	http::Http,
-	Result as SerenityResult,
 };
 
 #[async_trait]
