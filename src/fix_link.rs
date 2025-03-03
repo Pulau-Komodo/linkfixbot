@@ -3,35 +3,51 @@ use std::sync::LazyLock;
 use itertools::Itertools;
 use regex::{Captures, Regex};
 
-pub fn find_and_fix(text: &str) -> impl Iterator<Item = String> + '_ {
-	let (regex, replacements) = &*MEGAPATTERN;
+pub fn find_and_fix(text: &str) -> impl Iterator<Item = LinkFix<'_>> + '_ {
+	let regex = &MEGAPATTERN.0;
 	text.split_ascii_whitespace()
 		.flat_map(|text| regex.captures_iter(text))
-		.map(|find| {
-			let index = find
-				.iter()
-				.skip(1)
-				.position(|group| group.is_some())
-				.unwrap(); // If it matched the outer regex, it needs to match some group, because all subsections have groups.
+		.map(LinkFix::new)
+}
 
-			let mut offset = 0;
-			let replacement = replacements
-				.iter()
-				.find(|replacement| {
-					if (offset..offset + replacement.capture_group_count * 2).contains(&index) {
-						true
-					} else {
-						offset += replacement.capture_group_count * 2;
-						false
-					}
-				})
-				.unwrap(); // One of the replacements must match the capture group found.
+#[derive(Debug)]
+pub struct LinkFix<'l> {
+	pub link: &'l str,
+	pub fixed: String,
+	pub remove_embed: bool,
+}
 
-			if !(offset..offset + replacement.capture_group_count).contains(&index) {
-				offset += replacement.capture_group_count;
-			}
-			(replacement.closure)(&find, offset)
-		})
+impl<'l> LinkFix<'l> {
+	pub fn new(captures: Captures<'l>) -> Self {
+		let replacements = &MEGAPATTERN.1;
+		let index = captures
+			.iter()
+			.skip(1)
+			.position(|group| group.is_some())
+			.unwrap(); // If it matched the outer regex, it needs to match some group, because all subsections have groups.
+
+		let mut offset = 0;
+		let replacement = replacements
+			.iter()
+			.find(|replacement| {
+				if (offset..offset + replacement.capture_group_count * 2).contains(&index) {
+					true
+				} else {
+					offset += replacement.capture_group_count * 2;
+					false
+				}
+			})
+			.unwrap(); // One of the replacements must match the capture group found.
+
+		if !(offset..offset + replacement.capture_group_count).contains(&index) {
+			offset += replacement.capture_group_count;
+		}
+		Self {
+			link: captures.get(0).unwrap().as_str(),
+			fixed: (replacement.closure)(&captures, offset),
+			remove_embed: replacement.remove_embed,
+		}
+	}
 }
 
 type ReplacementClosure = dyn Send + Sync + 'static + Fn(&Captures, usize) -> String;
@@ -40,12 +56,15 @@ pub struct Replacement {
 	pattern: &'static str,
 	capture_group_count: usize,
 	closure: Box<ReplacementClosure>,
+	/// Whether this replacement warrants removal of the original embed. `true` for embed-fixing links.
+	remove_embed: bool,
 }
 
 impl Replacement {
 	fn new(
 		pattern: &'static str,
 		closure: impl Send + Sync + 'static + Fn(&Captures, usize) -> String,
+		remove_embed: bool,
 	) -> Self {
 		let regex = Regex::new(pattern).unwrap();
 		let capture_group_count = regex.captures_len() - 1;
@@ -54,6 +73,7 @@ impl Replacement {
 			pattern,
 			capture_group_count,
 			closure: Box::new(closure),
+			remove_embed,
 		}
 	}
 }
@@ -72,6 +92,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
 	let twitter = Replacement::new(
 		r"https://(?:x|twitter)\.com/([0-9a-z_]+/status/[0-9]+)\S*",
 		|find, offset| format!("https://fixupx.com/{}", &find[offset + 1]),
+		true,
 	);
 	let instagram = Replacement::new(
 		r"https://www\.instagram\.com/(p|reel)/([-0-9a-z_]+)(?:/\S*)?",
@@ -82,6 +103,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
 				&find[offset + 2],
 			)
 		},
+		true,
 	);
 	let tiktok = Replacement::new(
 		r"https://www\.tiktok\.com/@([a-z0-9_\.]+)/video/([0-9]+)\S*",
@@ -92,6 +114,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
 				&find[offset + 2],
 			)
 		},
+		true,
 	);
 	let reddit = Replacement::new(
 		r"https://(www|old)\.reddit\.com/r/([0-9a-z_]+)/(comments)/([0-9a-z]+)/[0-9a-z_]+/?\S*",
@@ -104,6 +127,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
 				&find[offset + 4],
 			)
 		},
+		true,
 	);
 	let reddit_share = Replacement::new(
 		r"https://(www|old)\.reddit\.com/r/([0-9a-z_]+)/s/([0-9a-z]+)/?\S*",
@@ -115,10 +139,12 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
 				&find[offset + 3],
 			)
 		},
+		true,
 	);
 	let youtube = Replacement::new(
 		r"https://(?:www\.)?youtube\.com/shorts/([-0-9a-z_]+)\S*",
 		|find, offset| format!("<https://www.youtube.com/watch?v={}>", &find[offset + 1]),
+		false,
 	);
 	let amazon = Replacement::new(
 		r"https://www\.amazon\.(com|ca|co\.(?:uk|jp)|de|fr|it|es|in|nl|sg)/[^\s/]+/dp/([A-Z0-9]+)\S*",
@@ -129,6 +155,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
 				&find[offset + 2]
 			)
 		},
+		false,
 	);
 	let amazon2 = Replacement::new(
 		r"https://www\.amazon\.(com|ca|co\.(?:uk|jp)|de|fr|it|es|in|nl|sg)/gp/product/([A-Z0-9])+\S*",
@@ -139,6 +166,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
 				&find[offset + 2]
 			)
 		},
+		false,
 	);
 	let replacements = [
 		twitter,
@@ -175,7 +203,7 @@ mod tests {
 		let string = "blahblah https://www.instagram.com/reel/abc blahblah";
 		let find = find_and_fix(string).next();
 		assert_eq!(
-			find,
+			find.map(|fix| fix.fixed),
 			Some(String::from("https://www.ddinstagram.com/reel/abc/"))
 		);
 	}
@@ -184,7 +212,7 @@ mod tests {
 		let string = "blahblah <https://www.reddit.com/r/fictitious/comments/abc/def> blahblah";
 		let find = find_and_fix(string).next();
 		assert_eq!(
-			find,
+			find.map(|fix| fix.fixed),
 			Some(String::from(
 				"https://www.rxddit.com/r/fictitious/comments/abc/_/"
 			))
@@ -195,7 +223,7 @@ mod tests {
 		let string = "blahblah https://x.com/fictitious/status/0123 blahblah";
 		let find = find_and_fix(string).next();
 		assert_eq!(
-			find,
+			find.map(|fix| fix.fixed),
 			Some(String::from("https://fixupx.com/fictitious/status/0123"))
 		);
 	}
@@ -204,7 +232,7 @@ mod tests {
 		let string = "blahblah https://www.youtube.com/shorts/GX5wEDmbpQA blahblah";
 		let find = find_and_fix(string).next();
 		assert_eq!(
-			find,
+			find.map(|fix| fix.fixed),
 			Some(String::from(
 				"<https://www.youtube.com/watch?v=GX5wEDmbpQA>"
 			))
@@ -215,7 +243,7 @@ mod tests {
 		let string = "https://www.amazon.ca/Some-Item-With-Code-ABC012/dp/ABC012?all_sorts_of=tracking.data&other_random=bs&believability_of_the_volume=false";
 		let find = find_and_fix(&string).next();
 		assert_eq!(
-			find,
+			find.map(|fix| fix.fixed),
 			Some(String::from("<https://www.amazon.ca/dp/ABC012>"))
 		);
 	}
@@ -224,25 +252,25 @@ mod tests {
 		let string = r"hey <https://www.amazon.ca/Some-Item-With-Code-ABC012/dp/ABC012?all_sorts_of=tracking.data&other_random=bs&believability_of_the_volume=false> and https://www.instagram.com/reel/abc blahblah <https://www.reddit.com/r/fictitious/comments/abc/def> https://x.com/fictitious/status/0123 and https://www.youtube.com/shorts/GX5wEDmbpQA";
 		let mut links = find_and_fix(&string);
 		assert_eq!(
-			links.next(),
+			links.next().map(|fix| fix.fixed),
 			Some(String::from("<https://www.amazon.ca/dp/ABC012>"))
 		);
 		assert_eq!(
-			links.next(),
+			links.next().map(|fix| fix.fixed),
 			Some(String::from("https://www.ddinstagram.com/reel/abc/"))
 		);
 		assert_eq!(
-			links.next(),
+			links.next().map(|fix| fix.fixed),
 			Some(String::from(
 				"https://www.rxddit.com/r/fictitious/comments/abc/_/"
 			))
 		);
 		assert_eq!(
-			links.next(),
+			links.next().map(|fix| fix.fixed),
 			Some(String::from("https://fixupx.com/fictitious/status/0123"))
 		);
 		assert_eq!(
-			links.next(),
+			links.next().map(|fix| fix.fixed),
 			Some(String::from(
 				"<https://www.youtube.com/watch?v=GX5wEDmbpQA>"
 			))

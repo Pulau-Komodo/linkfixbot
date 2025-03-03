@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use serenity::all::*;
 
-use crate::{fix_link::find_and_fix, reply_shortcuts::ReplyShortcuts};
+use crate::{fix_link::find_and_fix, reply_shortcuts::ReplyShortcuts, strings::ERROR_NONE_FOUND};
 
 pub async fn fix_links(context: &Context, interaction: CommandInteraction) {
 	let Some(content) = interaction
@@ -12,10 +12,12 @@ pub async fn fix_links(context: &Context, interaction: CommandInteraction) {
 	else {
 		return;
 	};
-	let output = find_and_fix(content).join("\n");
+	let output = find_and_fix(content).map(|fix| fix.fixed).join("\n");
 
 	if output.is_empty() {
-		let _ = interaction.ephemeral_reply(&context.http, "Found no links to fix. I only fix embed links for x.com, instagram.com and reddit.com, and unshort Youtube shorts links.").await;
+		let _ = interaction
+			.ephemeral_reply(&context.http, ERROR_NONE_FOUND)
+			.await;
 		return;
 	}
 
@@ -25,7 +27,7 @@ pub async fn fix_links(context: &Context, interaction: CommandInteraction) {
 pub fn create_command() -> CreateCommand {
 	CreateCommand::new("fix")
 		.description(
-			"Replace all relevant links with embed-friendly or non-Youtube shorts alternatives.",
+			"Replace all relevant links with alternatives that are embed-friendly or non-Youtube shorts, or had their tracking bloat stripped.",
 		)
 		.add_option(
 			CreateCommandOption::new(

@@ -8,6 +8,7 @@ mod discord_event_handler;
 mod fix_link;
 mod reply_shortcuts;
 mod slash_command;
+mod strings;
 
 #[tokio::main]
 async fn main() {
