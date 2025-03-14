@@ -27,7 +27,7 @@ pub async fn fix_links(context: &Context, interaction: CommandInteraction) {
 pub fn create_command() -> CreateCommand {
 	CreateCommand::new("fix")
 		.description(
-			"Replace all relevant links with alternatives that are embed-friendly or non-Youtube shorts, or had their tracking bloat stripped.",
+			"Replace all relevant links with alternatives, to fix embeds, shorts and tracking.",
 		)
 		.add_option(
 			CreateCommandOption::new(
