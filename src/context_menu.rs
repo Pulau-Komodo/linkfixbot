@@ -1,10 +1,32 @@
+use std::collections::{HashMap, hash_map::Entry};
+
 use itertools::Itertools;
 use serenity::{
 	all::*,
-	futures::future::{self, OptionFuture},
+	futures::{
+		future::{self, OptionFuture},
+		lock::Mutex,
+	},
+	prelude::TypeMapKey,
 };
 
 use crate::{fix_link::find_and_fix, reply_shortcuts::ReplyShortcuts, strings::ERROR_NONE_FOUND};
+
+/// A message with embeds that may be suppressed in the future, if their replacements succeed in generating.
+#[derive(Debug)]
+pub struct FutureEmbedRemoval {
+	/// The message with the links.
+	message: MessageId,
+	/// The number of embeds it should have.
+	embed_count: usize,
+}
+
+#[derive(Debug)]
+pub struct FutureEmbedRemovals;
+
+impl TypeMapKey for FutureEmbedRemovals {
+	type Value = Mutex<HashMap<MessageId, FutureEmbedRemoval>>;
+}
 
 fn can_react(permissions: &Option<Permissions>) -> bool {
 	permissions
@@ -39,10 +61,13 @@ pub async fn fix_links(context: &Context, mut interaction: CommandInteraction) {
 	};
 	let any_removeable_embeds = !remaining_embed_urls.is_empty();
 
+	let mut intended_embeds = 0;
+
 	let content = &message.content;
 	let output = find_and_fix(content)
 		.map(|fix| {
 			if fix.remove_embed {
+				intended_embeds += 1;
 				if let Some(pos) = remaining_embed_urls
 					.iter()
 					.position(|url| url.as_ref().is_some_and(|url| url.as_str() == fix.link))
@@ -73,21 +98,24 @@ pub async fn fix_links(context: &Context, mut interaction: CommandInteraction) {
 	if result.is_err() {
 		println!("Did not remove embeds because message failed to send");
 		return;
-	}
+	};
+
 	let react: OptionFuture<_> = can_react(&interaction.app_permissions)
 		.then(|| message.react(context, ReactionType::Unicode("🔧".to_string())))
 		.into();
 	let suppress: OptionFuture<_> = should_suppress_embeds
 		.then(|| {
-			EditMessage::new()
-				.suppress_embeds(true)
-				.execute(context, (message.channel_id, message.id, None))
+			handle_embed_suppression(
+				context,
+				&interaction,
+				message.channel_id,
+				message.id,
+				intended_embeds,
+			)
 		})
 		.into();
-	let (_, suppress_result) = future::join(react, suppress).await;
-	if let Some(Err(error)) = suppress_result {
-		println!("Did not remove embeds because {:?}", error);
-	}
+
+	let _ = future::join(react, suppress).await;
 }
 
 pub fn create_command() -> CreateCommand {
@@ -99,4 +127,58 @@ pub fn create_command() -> CreateCommand {
 			InteractionContext::BotDm,
 			InteractionContext::PrivateChannel,
 		])
+}
+
+async fn handle_embed_suppression(
+	context: &Context,
+	interaction: &CommandInteraction,
+	channel: ChannelId,
+	message: MessageId,
+	embed_count: usize,
+) {
+	let Ok(response) = interaction.get_response(&context.http).await else {
+		return;
+	};
+	if response.embeds.is_empty() {
+		// No immediate embeds, so we may get them later.
+		let data = context.data.read().await;
+		if let Some(removals) = data.get::<FutureEmbedRemovals>() {
+			removals.lock().await.insert(
+				response.id,
+				FutureEmbedRemoval {
+					message,
+					embed_count,
+				},
+			);
+		}
+	} else if embed_count == response.embeds.len() {
+		// Immediate embeds, so try removing them now.
+		suppress_embeds(context, channel, message).await;
+	}
+}
+
+pub async fn handle_delayed_embed_suppression(context: &Context, event: &MessageUpdateEvent) {
+	let data = context.data.read().await;
+	let Some(removals) = data.get::<FutureEmbedRemovals>() else {
+		eprintln!("Future removals not present.");
+		return;
+	};
+
+	if let Entry::Occupied(entry) = removals.lock().await.entry(event.id) {
+		let removal = entry.get();
+		if event.embeds.as_ref().map(|v| v.len()).unwrap_or(0) == removal.embed_count {
+			suppress_embeds(context, event.channel_id, removal.message).await;
+		}
+		entry.remove();
+	}
+}
+
+async fn suppress_embeds(context: &Context, channel: ChannelId, message: MessageId) {
+	if let Err(error) = EditMessage::new()
+		.suppress_embeds(true)
+		.execute(context, (channel, message, None))
+		.await
+	{
+		println!("Did not remove embeds because {:?}", error);
+	}
 }

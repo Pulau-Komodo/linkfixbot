@@ -1,10 +1,13 @@
 use itertools::Itertools;
 use serenity::{
-	all::{Command, Context, EventHandler, Interaction, Ready},
+	all::{Command, Context, EventHandler, Interaction, Message, MessageUpdateEvent, Ready},
 	async_trait,
 };
 
-use crate::{context_menu, slash_command};
+use crate::{
+	context_menu::{self, handle_delayed_embed_suppression},
+	slash_command,
+};
 
 pub struct DiscordEventHandler;
 
@@ -18,6 +21,20 @@ impl EventHandler for DiscordEventHandler {
 			"fix links" => context_menu::fix_links(&context, interaction).await,
 			"fix" => slash_command::fix_links(&context, interaction).await,
 			_ => (),
+		}
+	}
+	async fn message_update(
+		&self,
+		context: Context,
+		_old: Option<Message>,
+		_new: Option<Message>,
+		event: MessageUpdateEvent,
+	) {
+		let Some(user) = &event.author else {
+			return;
+		};
+		if *user == **context.cache.current_user() {
+			handle_delayed_embed_suppression(&context, &event).await;
 		}
 	}
 	async fn ready(&self, context: Context, _ready: Ready) {
