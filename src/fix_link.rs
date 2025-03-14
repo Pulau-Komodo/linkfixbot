@@ -95,7 +95,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
 		true,
 	);
 	let instagram = Replacement::new(
-		r"https://www\.instagram\.com/(p|reel)/([-0-9a-z_]+)(?:/\S*)?",
+		r"https://www\.instagram\.com/(p|reels)/([-0-9a-z_]+)(?:/\S*)?",
 		|find, offset| {
 			format!(
 				"https://www.ddinstagram.com/{}/{}/",
