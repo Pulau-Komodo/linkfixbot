@@ -5,8 +5,7 @@ use serenity::{
 };
 
 use crate::{
-	context_menu::{self, handle_delayed_embed_suppression},
-	slash_command,
+	automatic, context_menu, fix_existing_message::handle_delayed_embed_suppression, slash_command,
 };
 
 pub struct DiscordEventHandler;
@@ -21,6 +20,11 @@ impl EventHandler for DiscordEventHandler {
 			"fix links" => context_menu::fix_links(&context, interaction).await,
 			"fix" => slash_command::fix_links(&context, interaction).await,
 			_ => (),
+		}
+	}
+	async fn message(&self, context: Context, message: Message) {
+		if !message.author.bot {
+			automatic::fix_links(&context, &message).await;
 		}
 	}
 	async fn message_update(
