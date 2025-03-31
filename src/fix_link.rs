@@ -88,7 +88,7 @@ impl std::fmt::Debug for Replacement {
 	}
 }
 
-static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
+static MEGAPATTERN: LazyLock<(Regex, [Replacement; 9])> = LazyLock::new(|| {
 	let twitter = Replacement::new(
 		r"https://(?:x|twitter)\.com/([0-9a-z_]+/status/[0-9]+)\S*",
 		|find, offset| format!("https://fixupx.com/{}", &find[offset + 1]),
@@ -141,6 +141,11 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
 		},
 		true,
 	);
+	let reddit_short = Replacement::new(
+		r"https://redd\.it/([0-9a-z]+)/?\S*",
+		|find, offset| format!("https://rxddit.com/{}", &find[offset + 1],),
+		true,
+	);
 	let youtube = Replacement::new(
 		r"https://(?:www\.)?youtube\.com/shorts/([-0-9a-z_]+)\S*",
 		|find, offset| format!("<https://www.youtube.com/watch?v={}>", &find[offset + 1]),
@@ -174,6 +179,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 8])> = LazyLock::new(|| {
 		tiktok,
 		reddit,
 		reddit_share,
+		reddit_short,
 		youtube,
 		amazon,
 		amazon2,
