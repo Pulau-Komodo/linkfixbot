@@ -13,7 +13,7 @@ use serenity::{
 	prelude::TypeMapKey,
 };
 
-use crate::fix_link::find_and_fix;
+use crate::{fix_link::find_and_fix, util::has_spoilers};
 
 /// A message with embeds that may be suppressed in the future, if their replacements succeed in generating.
 #[derive(Debug)]
