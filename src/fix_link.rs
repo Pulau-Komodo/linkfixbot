@@ -39,15 +39,33 @@ impl<'l> LinkFix<'l> {
 			})
 			.unwrap(); // One of the replacements must match the capture group found.
 
-		if !(offset..offset + replacement.capture_group_count).contains(&index) {
+		// Whether it found the first version (with `<>`) or the second (without).
+		let embed_suppressed = (offset..offset + replacement.capture_group_count).contains(&index);
+		if !embed_suppressed {
 			offset += replacement.capture_group_count;
 		}
+		let mut fixed = (replacement.closure)(&captures, offset);
+
+		if embed_suppressed || matches!(replacement.embed_handling, EmbedHandling::DoNothing) {
+			fixed = format!("<{fixed}>");
+		}
+
 		Self {
 			link: captures.get(0).unwrap().as_str(),
-			fixed: (replacement.closure)(&captures, offset),
-			remove_embed: replacement.remove_embed,
+			fixed,
+			remove_embed: matches!(replacement.embed_handling, EmbedHandling::Replace)
+				&& !embed_suppressed,
 		}
 	}
+}
+
+/// How to handle the existing embed and the new link.
+#[derive(Debug, Clone, Copy)]
+enum EmbedHandling {
+	/// If the new link gets an embed, remove the old one.
+	Replace,
+	/// Leave the old embed, if it had one, and prevent a new one (using `<>`).
+	DoNothing,
 }
 
 type ReplacementClosure = dyn Send + Sync + 'static + Fn(&Captures, usize) -> String;
@@ -57,14 +75,14 @@ pub struct Replacement {
 	capture_group_count: usize,
 	closure: Box<ReplacementClosure>,
 	/// Whether this replacement warrants removal of the original embed. `true` for embed-fixing links.
-	remove_embed: bool,
+	embed_handling: EmbedHandling,
 }
 
 impl Replacement {
 	fn new(
 		pattern: &'static str,
 		closure: impl Send + Sync + 'static + Fn(&Captures, usize) -> String,
-		remove_embed: bool,
+		embed_handling: EmbedHandling,
 	) -> Self {
 		let regex = Regex::new(pattern).unwrap();
 		let capture_group_count = regex.captures_len() - 1;
@@ -73,7 +91,7 @@ impl Replacement {
 			pattern,
 			capture_group_count,
 			closure: Box::new(closure),
-			remove_embed,
+			embed_handling,
 		}
 	}
 }
@@ -92,7 +110,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 9])> = LazyLock::new(|| {
 	let twitter = Replacement::new(
 		r"https://(?:x|twitter)\.com/([0-9a-z_]+/status/[0-9]+)\S*",
 		|find, offset| format!("https://fixupx.com/{}", &find[offset + 1]),
-		true,
+		EmbedHandling::Replace,
 	);
 	let instagram = Replacement::new(
 		r"https://www\.instagram\.com/(p|reels?)/([-0-9a-z_]+)(?:/\S*)?",
@@ -103,7 +121,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 9])> = LazyLock::new(|| {
 				&find[offset + 2],
 			)
 		},
-		true,
+		EmbedHandling::Replace,
 	);
 	let tiktok = Replacement::new(
 		r"https://www\.tiktok\.com/@([a-z0-9_\.]+)/video/([0-9]+)\S*",
@@ -114,7 +132,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 9])> = LazyLock::new(|| {
 				&find[offset + 2],
 			)
 		},
-		true,
+		EmbedHandling::Replace,
 	);
 	let reddit = Replacement::new(
 		r"https://(www|old)\.reddit\.com/r/([0-9a-z_]+)/(comments)/([0-9a-z]+)/[0-9a-z_]+/?\S*",
@@ -127,7 +145,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 9])> = LazyLock::new(|| {
 				&find[offset + 4],
 			)
 		},
-		true,
+		EmbedHandling::Replace,
 	);
 	let reddit_share = Replacement::new(
 		r"https://(www|old)\.reddit\.com/r/([0-9a-z_]+)/s/([0-9a-z]+)/?\S*",
@@ -139,39 +157,39 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 9])> = LazyLock::new(|| {
 				&find[offset + 3],
 			)
 		},
-		true,
+		EmbedHandling::Replace,
 	);
 	let reddit_short = Replacement::new(
 		r"https://redd\.it/([0-9a-z]+)/?\S*",
 		|find, offset| format!("https://rxddit.com/{}", &find[offset + 1],),
-		true,
+		EmbedHandling::Replace,
 	);
 	let youtube = Replacement::new(
 		r"https://(?:www\.)?youtube\.com/shorts/([-0-9a-z_]+)\S*",
-		|find, offset| format!("<https://www.youtube.com/watch?v={}>", &find[offset + 1]),
-		false,
+		|find, offset| format!("https://www.youtube.com/watch?v={}", &find[offset + 1]),
+		EmbedHandling::DoNothing,
 	);
 	let amazon = Replacement::new(
 		r"https://www\.amazon\.(com|ca|co\.(?:uk|jp)|de|fr|it|es|in|nl|sg)/[^\s/]+/dp/([A-Z0-9]+)\S*",
 		|find, offset| {
 			format!(
-				"<https://www.amazon.{}/dp/{}>",
+				"https://www.amazon.{}/dp/{}",
 				&find[offset + 1],
 				&find[offset + 2]
 			)
 		},
-		false,
+		EmbedHandling::DoNothing,
 	);
 	let amazon2 = Replacement::new(
 		r"https://www\.amazon\.(com|ca|co\.(?:uk|jp)|de|fr|it|es|in|nl|sg)/gp/product/([A-Z0-9])+\S*",
 		|find, offset| {
 			format!(
-				"<https://www.amazon.{}/dp/{}>",
+				"https://www.amazon.{}/dp/{}",
 				&find[offset + 1],
 				&find[offset + 2]
 			)
 		},
-		false,
+		EmbedHandling::DoNothing,
 	);
 	let replacements = [
 		twitter,
@@ -220,7 +238,7 @@ mod tests {
 		assert_eq!(
 			find.map(|fix| fix.fixed),
 			Some(String::from(
-				"https://www.rxddit.com/r/fictitious/comments/abc/_/"
+				"<https://www.rxddit.com/r/fictitious/comments/abc/_/>"
 			))
 		);
 	}
@@ -268,7 +286,7 @@ mod tests {
 		assert_eq!(
 			links.next().map(|fix| fix.fixed),
 			Some(String::from(
-				"https://www.rxddit.com/r/fictitious/comments/abc/_/"
+				"<https://www.rxddit.com/r/fictitious/comments/abc/_/>"
 			))
 		);
 		assert_eq!(
