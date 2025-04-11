@@ -12,6 +12,7 @@ mod fix_link;
 mod reply_shortcuts;
 mod slash_command;
 mod strings;
+mod util;
 
 #[tokio::main]
 async fn main() {

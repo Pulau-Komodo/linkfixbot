@@ -48,6 +48,9 @@ pub async fn fix_existing_message(
 	message: &Message,
 	can_suppress: bool,
 ) -> Option<(String, usize, bool)> {
+	if has_spoilers(&message.content) {
+		return None;
+	}
 	let mut remaining_embed_urls = if can_suppress {
 		message.embeds.iter().map(|embed| &embed.url).collect()
 	} else {
