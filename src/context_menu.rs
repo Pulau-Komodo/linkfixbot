@@ -22,9 +22,7 @@ pub async fn fix_links(context: &Context, mut interaction: CommandInteraction) {
 		return;
 	};
 
-	let Some((output, intended_embeds, should_suppress_embeds)) =
-		fix_existing_message(&message, can_suppress_embeds(&interaction.app_permissions)).await
-	else {
+	let Some((output, embeds_to_suppress)) = fix_existing_message(&message).await else {
 		let _ = interaction
 			.ephemeral_reply(&context.http, ERROR_NONE_FOUND)
 			.await;
@@ -33,7 +31,6 @@ pub async fn fix_links(context: &Context, mut interaction: CommandInteraction) {
 
 	let result = interaction.public_reply(&context.http, output).await;
 	if result.is_err() {
-		println!("Did not remove embeds because message failed to send");
 		return;
 	};
 
@@ -41,9 +38,9 @@ pub async fn fix_links(context: &Context, mut interaction: CommandInteraction) {
 		context,
 		&message,
 		interaction.get_response(&context.http).await.ok().as_ref(),
-		intended_embeds,
+		embeds_to_suppress,
 		can_react(&interaction.app_permissions),
-		should_suppress_embeds,
+		can_suppress_embeds(&interaction.app_permissions),
 	)
 	.await;
 }

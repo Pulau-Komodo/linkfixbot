@@ -1,8 +1,8 @@
-use std::{collections::HashMap, fs};
+use std::fs;
 
 use discord_event_handler::DiscordEventHandler;
-use fix_existing_message::FutureEmbedRemovals;
-use serenity::{all::GatewayIntents, futures::lock::Mutex};
+use fix_existing_message::{FutureEmbedRemovals, FutureEmbedRemovalsTypeMap};
+use serenity::all::GatewayIntents;
 
 mod automatic;
 mod context_menu;
@@ -20,7 +20,7 @@ async fn main() {
 
 	let mut client = serenity::Client::builder(
 		&discord_token,
-		GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT,
+		GatewayIntents::GUILDS | GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT,
 	)
 	.event_handler(DiscordEventHandler)
 	.await
@@ -30,7 +30,7 @@ async fn main() {
 		.data
 		.write()
 		.await
-		.insert::<FutureEmbedRemovals>(Mutex::new(HashMap::new()));
+		.insert::<FutureEmbedRemovalsTypeMap>(FutureEmbedRemovals::new());
 
 	if let Err(why) = client.start().await {
 		eprintln!("Error with client: {:?}", why);

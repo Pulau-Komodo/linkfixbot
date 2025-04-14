@@ -5,33 +5,18 @@ use crate::fix_existing_message::{
 };
 
 async fn get_permissions(context: &Context, message: &Message) -> Option<Permissions> {
-	let member = context
-		.http
-		.get_current_user_guild_member(message.guild_id?)
-		.await
-		.ok()?;
-	message
-		.channel(&context)
-		.await
-		.ok()
-		.and_then(|channel| channel.guild())
-		.and_then(|channel| {
-			message
-				.guild(&context.cache)
-				.map(|guild| guild.user_permissions_in(&channel, &member))
-		})
+	let guild = message.guild_id?.to_guild_cached(&context.cache)?;
+	let member = guild.members.get(&context.cache.current_user().id)?;
+	let channel = guild.channels.get(&message.channel_id)?;
+	Some(guild.user_permissions_in(channel, member))
 }
 
 pub async fn fix_links(context: &Context, message: &Message) {
 	let permissions = get_permissions(context, message).await;
 
-	let Some((output, intended_embeds, should_suppress_embeds)) =
-		fix_existing_message(message, can_suppress_embeds(&permissions)).await
-	else {
+	let Some((output, embeds_to_suppress)) = fix_existing_message(message).await else {
 		return;
 	};
-
-	println!("{output}");
 
 	let Ok(own_message) = message.reply(&context.http, output).await else {
 		println!("Did not remove embeds because message failed to send");
@@ -42,9 +27,9 @@ pub async fn fix_links(context: &Context, message: &Message) {
 		context,
 		message,
 		Some(&own_message),
-		intended_embeds,
+		embeds_to_suppress,
 		can_react(&permissions),
-		should_suppress_embeds,
+		can_suppress_embeds(&permissions),
 	)
 	.await;
 }
