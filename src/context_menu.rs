@@ -22,7 +22,7 @@ pub async fn fix_links(context: &Context, mut interaction: CommandInteraction) {
 		return;
 	};
 
-	let Some((output, embeds_to_suppress)) = fix_existing_message(&message).await else {
+	let Some((output, embeds_to_suppress)) = fix_existing_message(&message.content).await else {
 		let _ = interaction
 			.ephemeral_reply(&context.http, ERROR_NONE_FOUND)
 			.await;

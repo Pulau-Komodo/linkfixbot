@@ -54,8 +54,7 @@ impl EventHandler for DiscordEventHandler {
 		} else if event
 			.embeds
 			.as_ref()
-			.map(|embeds| !embeds.is_empty())
-			.unwrap_or(false)
+			.is_some_and(|embeds| !embeds.is_empty())
 		{
 			println!("Other user's message with embeds.");
 			handle_user_message_embed_generation(&context, &event).await;

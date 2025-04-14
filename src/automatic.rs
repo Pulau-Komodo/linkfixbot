@@ -14,7 +14,7 @@ async fn get_permissions(context: &Context, message: &Message) -> Option<Permiss
 pub async fn fix_links(context: &Context, message: &Message) {
 	let permissions = get_permissions(context, message).await;
 
-	let Some((output, embeds_to_suppress)) = fix_existing_message(message).await else {
+	let Some((output, embeds_to_suppress)) = fix_existing_message(&message.content).await else {
 		return;
 	};
 
