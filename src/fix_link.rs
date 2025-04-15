@@ -116,7 +116,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 9])> = LazyLock::new(|| {
 		r"https://www\.instagram\.com/(p|reels?)/([-0-9a-z_]+)(?:/\S*)?",
 		|find, offset| {
 			format!(
-				"https://www.ddinstagram.com/{}/{}/",
+				"https://www.instagramez.com/{}/{}/",
 				&find[offset + 1],
 				&find[offset + 2],
 			)
