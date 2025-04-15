@@ -307,7 +307,7 @@ pub async fn handle_bot_message_embed_generation(context: &Context, event: &Mess
 	if let Some(embed_count) = event
 		.embeds
 		.as_ref()
-		.and_then(|embeds| embeds.is_empty().then_some(embeds.len()))
+		.and_then(|embeds| (!embeds.is_empty()).then_some(embeds.len()))
 	{
 		if let Some(message) = removals.update_bot_message(event.id, embed_count).await {
 			suppress_embeds(context, event.channel_id, message).await;
