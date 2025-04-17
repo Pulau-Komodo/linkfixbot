@@ -1,7 +1,7 @@
 use serenity::all::{Context, Message, Permissions};
 
 use crate::fix_existing_message::{
-	can_react, can_suppress_embeds, fix_existing_message, try_react_and_suppress,
+	can_suppress_embeds, fix_existing_message, try_react_and_suppress,
 };
 
 async fn get_permissions(context: &Context, message: &Message) -> Option<Permissions> {
@@ -28,7 +28,7 @@ pub async fn fix_links(context: &Context, message: &Message) {
 		message,
 		Some(&own_message),
 		embeds_to_suppress,
-		can_react(&permissions),
+		false,
 		can_suppress_embeds(&permissions),
 	)
 	.await;
