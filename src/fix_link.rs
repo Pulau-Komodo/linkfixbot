@@ -7,7 +7,7 @@ pub fn find_and_fix(text: &str) -> impl Iterator<Item = LinkFix<'_>> + '_ {
 	let regex = &MEGAPATTERN.0;
 	text.split_ascii_whitespace()
 		.flat_map(|text| regex.captures_iter(text))
-		.map(LinkFix::new)
+		.filter_map(LinkFix::new)
 }
 
 #[derive(Debug)]
@@ -18,7 +18,7 @@ pub struct LinkFix<'l> {
 }
 
 impl<'l> LinkFix<'l> {
-	pub fn new(captures: Captures<'l>) -> Self {
+	pub fn new(captures: Captures<'l>) -> Option<Self> {
 		let replacements = &MEGAPATTERN.1;
 		let index = captures
 			.iter()
@@ -41,6 +41,10 @@ impl<'l> LinkFix<'l> {
 
 		// Whether it found the first version (with `<>`) or the second (without).
 		let embed_suppressed = (offset..offset + replacement.capture_group_count).contains(&index);
+		if embed_suppressed && matches!(replacement.embed_handling, EmbedHandling::Replace) {
+			// Replacing the embed is presumed to be the point, but the original was embed suppressed.
+			return None;
+		}
 		if !embed_suppressed {
 			offset += replacement.capture_group_count;
 		}
@@ -50,12 +54,13 @@ impl<'l> LinkFix<'l> {
 			fixed = format!("<{fixed}>");
 		}
 
-		Self {
+		let fix = Self {
 			link: captures.get(0).unwrap().as_str(),
 			fixed,
 			remove_embed: matches!(replacement.embed_handling, EmbedHandling::Replace)
 				&& !embed_suppressed,
-		}
+		};
+		Some(fix)
 	}
 }
 
