@@ -233,17 +233,17 @@ mod tests {
 		let find = find_and_fix(string).next();
 		assert_eq!(
 			find.map(|fix| fix.fixed),
-			Some(String::from("https://www.ddinstagram.com/reel/abc/"))
+			Some(String::from("https://www.instagramez.com/reel/abc/"))
 		);
 	}
 	#[test]
 	fn find_reddit() {
-		let string = "blahblah <https://www.reddit.com/r/fictitious/comments/abc/def> blahblah";
+		let string = "blahblah https://www.reddit.com/r/fictitious/comments/abc/def blahblah";
 		let find = find_and_fix(string).next();
 		assert_eq!(
 			find.map(|fix| fix.fixed),
 			Some(String::from(
-				"<https://www.rxddit.com/r/fictitious/comments/abc/_/>"
+				"https://www.rxddit.com/r/fictitious/comments/abc/_/"
 			))
 		);
 	}
@@ -278,7 +278,7 @@ mod tests {
 	}
 	#[test]
 	fn find_each() {
-		let string = r"hey <https://www.amazon.ca/Some-Item-With-Code-ABC012/dp/ABC012?all_sorts_of=tracking.data&other_random=bs&believability_of_the_volume=false> and https://www.instagram.com/reel/abc blahblah <https://www.reddit.com/r/fictitious/comments/abc/def> https://x.com/fictitious/status/0123 and https://www.youtube.com/shorts/GX5wEDmbpQA";
+		let string = r"hey <https://www.amazon.ca/Some-Item-With-Code-ABC012/dp/ABC012?all_sorts_of=tracking.data&other_random=bs&believability_of_the_volume=false> and https://www.instagram.com/reel/abc blahblah https://www.reddit.com/r/fictitious/comments/abc/def https://x.com/fictitious/status/0123 and https://www.youtube.com/shorts/GX5wEDmbpQA";
 		let mut links = find_and_fix(&string);
 		assert_eq!(
 			links.next().map(|fix| fix.fixed),
@@ -286,12 +286,12 @@ mod tests {
 		);
 		assert_eq!(
 			links.next().map(|fix| fix.fixed),
-			Some(String::from("https://www.ddinstagram.com/reel/abc/"))
+			Some(String::from("https://www.instagramez.com/reel/abc/"))
 		);
 		assert_eq!(
 			links.next().map(|fix| fix.fixed),
 			Some(String::from(
-				"<https://www.rxddit.com/r/fictitious/comments/abc/_/>"
+				"https://www.rxddit.com/r/fictitious/comments/abc/_/"
 			))
 		);
 		assert_eq!(
