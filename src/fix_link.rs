@@ -186,7 +186,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 9])> = LazyLock::new(|| {
 		EmbedHandling::DoNothing,
 	);
 	let amazon2 = Replacement::new(
-		r"https://www\.amazon\.(com|ca|co\.(?:uk|jp)|de|fr|it|es|in|nl|sg)/gp/product/([A-Z0-9])+\S*",
+		r"https://www\.amazon\.(com|ca|co\.(?:uk|jp)|de|fr|it|es|in|nl|sg)/gp/product/([A-Z0-9]+)\S*",
 		|find, offset| {
 			format!(
 				"https://www.amazon.{}/dp/{}",
