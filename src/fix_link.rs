@@ -140,7 +140,7 @@ static MEGAPATTERN: LazyLock<(Regex, [Replacement; 9])> = LazyLock::new(|| {
 		EmbedHandling::Replace,
 	);
 	let reddit = Replacement::new(
-		r"https://(www|old)\.reddit\.com/r/([0-9a-z_]+)/(comments)/([0-9a-z]+)/[0-9a-z_]+/?(?:\?\S*)?",
+		r"https://(www|old)\.reddit\.com/r/([0-9a-z_]+)/(comments)/([0-9a-z]+)/[0-9_\p{Alphabetic}]+/?(?:\?\S*)?",
 		|find, offset| {
 			format!(
 				"https://{}.rxddit.com/r/{}/{}/{}/_/",
@@ -238,7 +238,7 @@ mod tests {
 	}
 	#[test]
 	fn find_reddit() {
-		let string = "blahblah https://www.reddit.com/r/fictitious/comments/abc/def blahblah";
+		let string = "blahblah https://www.reddit.com/r/fictitious/comments/abc/dëf blahblah";
 		let find = find_and_fix(string).next();
 		assert_eq!(
 			find.map(|fix| fix.fixed),
