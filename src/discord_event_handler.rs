@@ -9,10 +9,19 @@ use crate::{
 	fix_existing_message::{
 		handle_bot_message_embed_generation, handle_user_message_embed_generation,
 	},
+	fix_link::LinkFixer,
 	slash_command,
 };
 
-pub struct DiscordEventHandler;
+pub struct DiscordEventHandler {
+	link_fixer: LinkFixer,
+}
+
+impl DiscordEventHandler {
+	pub fn new(link_fixer: LinkFixer) -> Self {
+		Self { link_fixer }
+	}
+}
 
 #[async_trait]
 impl EventHandler for DiscordEventHandler {
@@ -21,14 +30,14 @@ impl EventHandler for DiscordEventHandler {
 			return;
 		};
 		match interaction.data.name.as_str() {
-			"fix links" => context_menu::fix_links(&context, interaction).await,
-			"fix" => slash_command::fix_links(&context, interaction).await,
+			"fix links" => context_menu::fix_links(&context, interaction, &self.link_fixer).await,
+			"fix" => slash_command::fix_links(&context, interaction, &self.link_fixer).await,
 			_ => (),
 		}
 	}
 	async fn message(&self, context: Context, message: Message) {
 		if !message.author.bot {
-			automatic::fix_links(&context, &message).await;
+			automatic::fix_links(&context, &message, &self.link_fixer).await;
 		}
 	}
 	async fn message_update(
@@ -57,7 +66,7 @@ impl EventHandler for DiscordEventHandler {
 			.is_some_and(|embeds| !embeds.is_empty())
 		{
 			println!("Other user's message with embeds.");
-			handle_user_message_embed_generation(&context, &event).await;
+			handle_user_message_embed_generation(&context, &event, &self.link_fixer).await;
 		}
 	}
 	async fn ready(&self, context: Context, _ready: Ready) {

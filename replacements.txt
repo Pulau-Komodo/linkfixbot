@@ -1,0 +1,35 @@
+https://(?:x|twitter)\.com/([0-9a-z_]+/status/[0-9]+)\S*
+https://fixupx.com/{0}
+replace
+
+https://www\.instagram\.com/(p|reels?)/([-0-9a-z_]+)(?:/\S*)?
+https://www.instagramez.com/{0}/{1}/
+replace
+
+https://www\.tiktok\.com/@([a-z0-9_\.]+)/video/([0-9]+)\S*
+https://www.vxtiktok.com/@{0}/video/{1}
+replace
+
+https://(www|old)\.reddit\.com/r/([0-9a-z_]+)/(comments)/([0-9a-z]+)/[0-9_\p{Alphabetic}]+/?(?:\?\S*)?
+https://{0}.rxddit.com/r/{1}/{2}/{3}/_/
+replace
+
+https://(www|old)\.reddit\.com/r/([0-9a-z_]+)/s/([0-9a-z]+)/?\S*
+https://{0}.rxddit.com/r/{1}/s/{2} (⚠️ this is a share link ⚠️)
+replace
+
+https://redd\.it/([0-9a-z]+)/?\S*
+https://rxddit.com/{0}
+replace
+
+https://(?:www\.)?youtube\.com/shorts/([-0-9a-z_]+)\S*
+https://www.youtube.com/watch?v={0}
+do nothing
+
+https://www\.amazon\.(com|ca|co\.(?:uk|jp)|de|fr|it|es|in|nl|sg)/[^\s/]+/dp/([A-Z0-9]+)\S*
+https://www.amazon.{0}/dp/{1}
+do nothing
+
+https://www\.amazon\.(com|ca|co\.(?:uk|jp)|de|fr|it|es|in|nl|sg)/gp/product/([A-Z0-9]+)\S*
+https://www.amazon.{0}/dp/{1}
+do nothing

@@ -12,7 +12,7 @@ use serenity::{
 use tokio::sync::RwLock;
 
 use crate::{
-	fix_link::find_and_fix,
+	fix_link::LinkFixer,
 	util::{get_embed_urls, has_spoilers, x_to_twitter},
 };
 
@@ -61,20 +61,18 @@ impl FutureEmbedRemovals {
 		embed_count: Option<usize>,
 	) -> bool {
 		let mut inner = self.0.write().await;
-		if let Some(embed_count) = embed_count {
-			if let hash_map::Entry::Occupied(occupied_entry) =
+		if let Some(embed_count) = embed_count
+			&& let hash_map::Entry::Occupied(occupied_entry) =
 				inner.messages_with_fixable_embeds.entry(original_message)
-			{
-				if *occupied_entry.get() == embed_count {
-					occupied_entry.remove();
-					println!(
-						"Success! add_bot_message Removed embeds on {} due to {}",
-						original_message.get(),
-						bot_message.get()
-					);
-					return true;
-				}
-			}
+			&& *occupied_entry.get() == embed_count
+		{
+			occupied_entry.remove();
+			println!(
+				"Success! add_bot_message Removed embeds on {} due to {}",
+				original_message.get(),
+				bot_message.get()
+			);
+			return true;
 		}
 		inner.bot_messages.insert(
 			bot_message,
@@ -142,19 +140,18 @@ impl FutureEmbedRemovals {
 			.bot_messages
 			.iter()
 			.find(|(_, bot_message)| bot_message.original_message == original_message)
+			&& let Some(embed_count) = bot_message.embed_count
 		{
-			if let Some(embed_count) = bot_message.embed_count {
-				// Both known, so bot message is no longer waiting.
-				inner.bot_messages.remove(&bot_message_id);
-				if embed_count == target_embed_count {
-					// Success.
-					println!(
-						"Success! add_original_message Removing embeds for {} due to {}",
-						original_message.get(),
-						bot_message_id.get()
-					);
-					return true;
-				}
+			// Both known, so bot message is no longer waiting.
+			inner.bot_messages.remove(&bot_message_id);
+			if embed_count == target_embed_count {
+				// Success.
+				println!(
+					"Success! add_original_message Removing embeds for {} due to {}",
+					original_message.get(),
+					bot_message_id.get()
+				);
+				return true;
 			}
 		}
 		// No match, so wait for the right bot message to come along.
@@ -183,13 +180,17 @@ pub fn can_suppress_embeds(permissions: &Option<Permissions>) -> bool {
 }
 
 /// Take an existing message and fix any links it has. Returns `None` if there were none. Otherwise, returns the message with the fixed links and the list of links that were fixed that should end up with their embeds replaced.
-pub async fn fix_existing_message(content: &str) -> Option<(String, Vec<String>)> {
+pub async fn fix_existing_message(
+	content: &str,
+	link_fixer: &LinkFixer,
+) -> Option<(String, Vec<String>)> {
 	if has_spoilers(content) {
 		return None;
 	}
 
 	let mut fixed_urls = Vec::new();
-	let output = find_and_fix(content)
+	let output = link_fixer
+		.find_and_fix(content)
 		.map(|fix| {
 			if fix.remove_embed {
 				let url = x_to_twitter(fix.link).unwrap_or_else(|| fix.link.to_string());
@@ -277,15 +278,14 @@ async fn handle_embed_suppression(
 		eprintln!("Couldn't get FutureEmbedRemovals.");
 		return;
 	};
-	if !original_message.embeds.is_empty() {
-		if let Some(target_embed_count) = determine_target_embed_count(
+	if !original_message.embeds.is_empty()
+		&& let Some(target_embed_count) = determine_target_embed_count(
 			get_embed_urls(&original_message.embeds),
 			&fixable_embed_links,
 		) {
-			removals
-				.add_original_message(original_message.id, target_embed_count)
-				.await;
-		}
+		removals
+			.add_original_message(original_message.id, target_embed_count)
+			.await;
 	}
 	let embed_count = (!bot_message.embeds.is_empty()).then_some(bot_message.embeds.len());
 	if removals
@@ -308,14 +308,17 @@ pub async fn handle_bot_message_embed_generation(context: &Context, event: &Mess
 		.embeds
 		.as_ref()
 		.and_then(|embeds| (!embeds.is_empty()).then_some(embeds.len()))
+		&& let Some(message) = removals.update_bot_message(event.id, embed_count).await
 	{
-		if let Some(message) = removals.update_bot_message(event.id, embed_count).await {
-			suppress_embeds(context, event.channel_id, message).await;
-		}
+		suppress_embeds(context, event.channel_id, message).await;
 	}
 }
 
-pub async fn handle_user_message_embed_generation(context: &Context, event: &MessageUpdateEvent) {
+pub async fn handle_user_message_embed_generation(
+	context: &Context,
+	event: &MessageUpdateEvent,
+	link_fixer: &LinkFixer,
+) {
 	let data = context.data.read().await;
 	let Some(removals) = data.get::<FutureEmbedRemovalsTypeMap>() else {
 		eprintln!("Future removals not present.");
@@ -331,7 +334,8 @@ pub async fn handle_user_message_embed_generation(context: &Context, event: &Mes
 	let Some(content) = event.content.as_ref() else {
 		return;
 	};
-	let Some((_output, embeds_to_suppress)) = fix_existing_message(content).await else {
+	let Some((_output, embeds_to_suppress)) = fix_existing_message(content, link_fixer).await
+	else {
 		return;
 	};
 	let Some(target_embed_count) =

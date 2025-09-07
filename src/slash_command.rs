@@ -1,9 +1,9 @@
 use itertools::Itertools;
 use serenity::all::*;
 
-use crate::{fix_link::find_and_fix, reply_shortcuts::ReplyShortcuts, strings::ERROR_NONE_FOUND};
+use crate::{fix_link::LinkFixer, reply_shortcuts::ReplyShortcuts, strings::ERROR_NONE_FOUND};
 
-pub async fn fix_links(context: &Context, interaction: CommandInteraction) {
+pub async fn fix_links(context: &Context, interaction: CommandInteraction, link_fixer: &LinkFixer) {
 	let Some(content) = interaction
 		.data
 		.options
@@ -12,7 +12,10 @@ pub async fn fix_links(context: &Context, interaction: CommandInteraction) {
 	else {
 		return;
 	};
-	let output = find_and_fix(content).map(|fix| fix.fixed).join("\n");
+	let output = link_fixer
+		.find_and_fix(content)
+		.map(|fix| fix.fixed)
+		.join("\n");
 
 	if output.is_empty() {
 		let _ = interaction

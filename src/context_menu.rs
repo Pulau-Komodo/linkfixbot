@@ -4,6 +4,7 @@ use crate::{
 	fix_existing_message::{
 		can_react, can_suppress_embeds, fix_existing_message, try_react_and_suppress,
 	},
+	fix_link::LinkFixer,
 	reply_shortcuts::ReplyShortcuts,
 	strings::ERROR_NONE_FOUND,
 };
@@ -13,7 +14,11 @@ fn take_interacted_message(interaction: &mut CommandInteraction) -> Option<Messa
 	messages.into_values().next()
 }
 
-pub async fn fix_links(context: &Context, mut interaction: CommandInteraction) {
+pub async fn fix_links(
+	context: &Context,
+	mut interaction: CommandInteraction,
+	link_fixer: &LinkFixer,
+) {
 	let Some(message) = take_interacted_message(&mut interaction) else {
 		eprintln!("Did not find a message for some reason.");
 		let _ = interaction
@@ -22,7 +27,9 @@ pub async fn fix_links(context: &Context, mut interaction: CommandInteraction) {
 		return;
 	};
 
-	let Some((output, embeds_to_suppress)) = fix_existing_message(&message.content).await else {
+	let Some((output, embeds_to_suppress)) =
+		fix_existing_message(&message.content, link_fixer).await
+	else {
 		let _ = interaction
 			.ephemeral_reply(&context.http, ERROR_NONE_FOUND)
 			.await;
