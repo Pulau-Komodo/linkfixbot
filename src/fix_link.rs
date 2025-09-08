@@ -144,12 +144,19 @@ impl Replacement {
 			replacement.len() - 1,
 			pattern
 		);
-		let insertion_points = insertion_point_iter
+		let insertion_points: Vec<_> = insertion_point_iter
 			.map(|point| {
 				let str = point.as_str();
 				str[1..str.len() - 1].parse::<usize>().unwrap()
 			})
 			.collect();
+
+		if !is_contiguous_starting_at_zero(&insertion_points) {
+			panic!(
+				"Insertion points need to start at 0 and not skip any numbers. Insertion points were: {:?}",
+				insertion_points
+			);
+		}
 
 		Self {
 			pattern: pattern.to_string(),
@@ -211,6 +218,17 @@ fn make_megapattern(replacements: &[Replacement]) -> Regex {
 		})
 		.join("|");
 	Regex::new(&format!("(?i)^(?:{inner})$")).unwrap()
+}
+
+fn is_contiguous_starting_at_zero(list: &[usize]) -> bool {
+	let mut found_values = vec![false; list.len()];
+	for number in list {
+		let Some(was_found) = found_values.get_mut(*number) else {
+			return false;
+		};
+		*was_found = true;
+	}
+	found_values.into_iter().all(std::convert::identity)
 }
 
 #[cfg(test)]
