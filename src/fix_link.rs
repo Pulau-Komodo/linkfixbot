@@ -20,7 +20,7 @@ impl LinkFixer {
 		assert_eq!(
 			group_sum, megapattern_group_count,
 			"The megapattern has more groups than the replacements combined."
-		);
+		); // I am not sure whether this can actually fail, but it's definitely a problem if it does.
 
 		Self {
 			replacements,
@@ -132,11 +132,10 @@ impl Replacement {
 			"Every pattern needs a capture group."
 		);
 		let embed_handling = EmbedHandling::from_string(embed_handling);
-		let insertion_point_iter = insertion_point_regex.find_iter(replacement);
-		let replacement = insertion_point_regex
-			.split(replacement)
-			.map(String::from)
-			.collect::<Vec<_>>();
+
+		let (replacement, insertion_points) =
+			process_replacement(replacement, capture_group_count, insertion_point_regex);
+
 		assert!(
 			capture_group_count == replacement.len() - 1,
 			"Number of capture groups ({}) does not match number of insertion points in the replacement string ({}) on pattern \"{}\".",
@@ -144,19 +143,12 @@ impl Replacement {
 			replacement.len() - 1,
 			pattern
 		);
-		let insertion_points: Vec<_> = insertion_point_iter
-			.map(|point| {
-				let str = point.as_str();
-				str[1..str.len() - 1].parse::<usize>().unwrap()
-			})
-			.collect();
 
-		if !is_contiguous_starting_at_zero(&insertion_points) {
-			panic!(
-				"Insertion points need to start at 0 and not skip any numbers. Insertion points were: {:?}",
-				insertion_points
-			);
-		}
+		assert!(
+			is_contiguous_starting_at_zero(&insertion_points),
+			"Insertion points need to start at 0 and not skip any numbers. Insertion points were: {:?}",
+			insertion_points
+		);
 
 		Self {
 			pattern: pattern.to_string(),
@@ -179,6 +171,26 @@ impl Replacement {
 		}
 		output
 	}
+}
+
+fn process_replacement(
+	replacement: &str,
+	capture_group_count: usize,
+	insertion_point_regex: &Regex,
+) -> (Vec<String>, Vec<usize>) {
+	let mut replacement_parts = Vec::with_capacity(capture_group_count + 1);
+	let mut insertion_points = Vec::with_capacity(capture_group_count);
+	let mut prev_index = 0;
+	for point in insertion_point_regex.find_iter(replacement) {
+		let part = &replacement[prev_index..point.range().start];
+		replacement_parts.push(part.to_string());
+		prev_index = point.range().end;
+		let str = point.as_str();
+		let point = str[1..str.len() - 1].parse::<usize>().unwrap();
+		insertion_points.push(point);
+	}
+	replacement_parts.push(replacement[prev_index..].to_string());
+	(replacement_parts, insertion_points)
 }
 
 fn load_replacements() -> Vec<Replacement> {
