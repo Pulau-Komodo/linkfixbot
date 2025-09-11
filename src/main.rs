@@ -18,7 +18,8 @@ mod util;
 
 #[tokio::main]
 async fn main() {
-	let link_fixer = LinkFixer::from_config();
+	let config = std::fs::read_to_string("./replacements.txt").unwrap();
+	let link_fixer = LinkFixer::from_config(&config);
 
 	let discord_token = fs::read_to_string("./token.txt").expect("Could not read token file");
 

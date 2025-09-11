@@ -2,13 +2,16 @@ use itertools::Itertools;
 use regex::{Captures, Regex};
 
 pub struct LinkFixer {
-	replacements: Vec<Replacement>,
+	replacements: Vec<ReplacementRule>,
 	megapattern: Regex,
 }
 
 impl LinkFixer {
-	pub fn from_config() -> Self {
-		let replacements = load_replacements();
+	/// # Panics
+	///
+	/// Panics on malformed config.
+	pub fn from_config(config: &str) -> Self {
+		let replacements = process_replacement_rules(config);
 		let megapattern = make_megapattern(&replacements);
 
 		let group_sum = replacements
@@ -42,7 +45,7 @@ pub struct LinkFix<'l> {
 }
 
 impl<'l> LinkFix<'l> {
-	pub fn new(captures: Captures<'l>, replacements: &[Replacement]) -> Option<Self> {
+	pub fn new(captures: Captures<'l>, replacements: &[ReplacementRule]) -> Option<Self> {
 		let index = captures
 			.iter()
 			.skip(1)
@@ -109,16 +112,26 @@ impl EmbedHandling {
 	}
 }
 
+/// Information about what to replace with what.
 #[derive(Debug)]
-pub struct Replacement {
+pub struct ReplacementRule {
+	/// The regex pattern (not made into an actual `Regex`) to match and capture parts of.
+	///
+	/// This doesn't really need to exist past start-up.
 	pattern: String,
+	/// The number of capture groups is used for finding which capture group of the megapattern belongs to which `ReplacementRule`.
 	capture_group_count: usize,
+	/// The string parts that the captured substrings go between.
 	replacement: Vec<String>,
+	/// Which captured substring goes where.
 	insertion_points: Vec<usize>,
 	embed_handling: EmbedHandling,
 }
 
-impl Replacement {
+impl ReplacementRule {
+	/// # Panics
+	///
+	/// Panics on malformed config.
 	fn from_config(
 		pattern: &str,
 		replacement: &str,
@@ -158,6 +171,7 @@ impl Replacement {
 			embed_handling,
 		}
 	}
+	#[allow(unstable_name_collisions)]
 	fn apply(&self, captures: &Captures<'_>, offset: usize) -> String {
 		let mut output = String::new();
 		let mut insertion_iter = self.insertion_points.iter();
@@ -193,17 +207,16 @@ fn process_replacement(
 	(replacement_parts, insertion_points)
 }
 
-fn load_replacements() -> Vec<Replacement> {
+fn process_replacement_rules(config: &str) -> Vec<ReplacementRule> {
 	let insertion_point_regex = Regex::new(r"\{\d+}").unwrap();
 
-	let file = std::fs::read_to_string("./replacements.txt").unwrap();
-	let mut lines = file.lines();
+	let mut lines = config.lines();
 	let mut replacements = Vec::new();
 
 	while let Some(pattern) = lines.next() {
 		let replacement = lines.next().unwrap();
 		let embed_handling = lines.next().unwrap();
-		replacements.push(Replacement::from_config(
+		replacements.push(ReplacementRule::from_config(
 			pattern,
 			replacement,
 			embed_handling,
@@ -219,7 +232,7 @@ fn load_replacements() -> Vec<Replacement> {
 	replacements
 }
 
-fn make_megapattern(replacements: &[Replacement]) -> Regex {
+fn make_megapattern(replacements: &[ReplacementRule]) -> Regex {
 	let inner = replacements
 		.iter()
 		.flat_map(|replacement| {
@@ -249,7 +262,8 @@ mod tests {
 
 	#[test]
 	fn find_instagram() {
-		let link_fixer = LinkFixer::from_config();
+		let config = std::fs::read_to_string("./replacements.txt").unwrap();
+		let link_fixer = LinkFixer::from_config(&config);
 		let string = "blahblah https://www.instagram.com/reel/abc blahblah";
 		let find = link_fixer.find_and_fix(string).next();
 		assert_eq!(
@@ -259,7 +273,8 @@ mod tests {
 	}
 	#[test]
 	fn find_reddit() {
-		let link_fixer = LinkFixer::from_config();
+		let config = std::fs::read_to_string("./replacements.txt").unwrap();
+		let link_fixer = LinkFixer::from_config(&config);
 		let string = "blahblah https://www.reddit.com/r/fictitious/comments/abc/dëf blahblah";
 		let find = link_fixer.find_and_fix(string).next();
 		assert_eq!(
@@ -271,7 +286,8 @@ mod tests {
 	}
 	#[test]
 	fn find_twitter() {
-		let link_fixer = LinkFixer::from_config();
+		let config = std::fs::read_to_string("./replacements.txt").unwrap();
+		let link_fixer = LinkFixer::from_config(&config);
 		let string = "blahblah https://x.com/fictitious/status/0123 blahblah";
 		let find = link_fixer.find_and_fix(string).next();
 		assert_eq!(
@@ -281,7 +297,8 @@ mod tests {
 	}
 	#[test]
 	fn find_youtube() {
-		let link_fixer = LinkFixer::from_config();
+		let config = std::fs::read_to_string("./replacements.txt").unwrap();
+		let link_fixer = LinkFixer::from_config(&config);
 		let string = "blahblah https://www.youtube.com/shorts/GX5wEDmbpQA blahblah";
 		let find = link_fixer.find_and_fix(string).next();
 		assert_eq!(
@@ -293,7 +310,8 @@ mod tests {
 	}
 	#[test]
 	fn find_amazon() {
-		let link_fixer = LinkFixer::from_config();
+		let config = std::fs::read_to_string("./replacements.txt").unwrap();
+		let link_fixer = LinkFixer::from_config(&config);
 		let string = "https://www.amazon.ca/Some-Item-With-Code-ABC012/dp/ABC012?all_sorts_of=tracking.data&other_random=bs&believability_of_the_volume=false";
 		let find = link_fixer.find_and_fix(&string).next();
 		assert_eq!(
@@ -303,7 +321,8 @@ mod tests {
 	}
 	#[test]
 	fn find_each() {
-		let link_fixer = LinkFixer::from_config();
+		let config = std::fs::read_to_string("./replacements.txt").unwrap();
+		let link_fixer = LinkFixer::from_config(&config);
 		let string = r"hey <https://www.amazon.ca/Some-Item-With-Code-ABC012/dp/ABC012?all_sorts_of=tracking.data&other_random=bs&believability_of_the_volume=false> and https://www.instagram.com/reel/abc blahblah https://www.reddit.com/r/fictitious/comments/abc/def https://x.com/fictitious/status/0123 and https://www.youtube.com/shorts/GX5wEDmbpQA";
 		let mut links = link_fixer.find_and_fix(&string);
 		assert_eq!(
