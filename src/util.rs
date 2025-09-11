@@ -20,7 +20,7 @@ pub fn x_to_twitter(link: &str) -> Option<String> {
 	Some(format!("https://twitter.com/{}", find.get(1)?.as_str()))
 }
 
-pub fn has_suppressed_embeds(message: &Message) -> bool {
+pub fn _has_suppressed_embeds(message: &Message) -> bool {
 	message
 		.flags
 		.map(|flags| flags.contains(MessageFlags::SUPPRESS_EMBEDS))
@@ -32,4 +32,20 @@ pub fn get_embed_urls<'l>(embeds: impl IntoIterator<Item = &'l Embed>) -> Vec<St
 		.into_iter()
 		.filter_map(|embed| embed.url.clone())
 		.collect()
+}
+
+/// Counts embeds, attempting to discount ones that will end up merged. Assumes embeds that will be merged are consecutive.
+pub fn count_embeds<'l>(embeds: impl IntoIterator<Item = &'l Embed>) -> usize {
+	let mut prev_url = None;
+	let mut count = 0;
+	for embed in embeds {
+		if embed.url.is_none()
+			|| embed.url.as_deref() != prev_url
+			|| embed.kind.as_deref() != Some("rich")
+		{
+			count += 1;
+		}
+		prev_url = embed.url.as_deref();
+	}
+	count
 }

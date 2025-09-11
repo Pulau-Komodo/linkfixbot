@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 
 use crate::{
 	fix_link::LinkFixer,
-	util::{get_embed_urls, has_spoilers, x_to_twitter},
+	util::{count_embeds, get_embed_urls, has_spoilers, x_to_twitter},
 };
 
 /// A message with embeds that may be suppressed in the future, if their replacements succeed in generating.
@@ -207,6 +207,11 @@ pub async fn fix_existing_message(
 	Some((output, fixed_urls))
 }
 
+/// Takes a list of URLs of existing embeds, and a list of links that should have embed-fixing versions posted by the bot, to determine how many embeds the bot message should end up with.
+///
+/// `None` means there were embeds not connected to fixable links at all, so do not attempt to suppress embeds.
+///
+/// To-do: There is a flaw in logic here. If the user has an embed failure on one of multiple links, then the bot could end up loading more embeds than this. Or, if the bot also has an embed failure, but on a different link, the bot could end up suppressing links inappropriately.
 pub fn determine_target_embed_count(
 	mut embed_urls: Vec<String>,
 	fixable_embed_links: &[String],
@@ -307,7 +312,7 @@ pub async fn handle_bot_message_embed_generation(context: &Context, event: &Mess
 	if let Some(embed_count) = event
 		.embeds
 		.as_ref()
-		.and_then(|embeds| (!embeds.is_empty()).then_some(embeds.len()))
+		.and_then(|embeds| (!embeds.is_empty()).then(|| count_embeds(embeds)))
 		&& let Some(message) = removals.update_bot_message(event.id, embed_count).await
 	{
 		suppress_embeds(context, event.channel_id, message).await;
