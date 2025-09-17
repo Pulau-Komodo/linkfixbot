@@ -33,7 +33,15 @@ impl LinkFixer {
 	pub fn find_and_fix<'s>(&'s self, text: &'s str) -> impl Iterator<Item = LinkFix<'s>> + 's {
 		text.split_ascii_whitespace()
 			.flat_map(|text| self.megapattern.captures_iter(text))
-			.filter_map(|captures| LinkFix::new(captures, &self.replacements))
+			.filter_map(|captures| LinkFix::new(captures, &self.replacements, true))
+	}
+	pub fn find_and_fix_slash<'s>(
+		&'s self,
+		text: &'s str,
+	) -> impl Iterator<Item = LinkFix<'s>> + 's {
+		text.split_ascii_whitespace()
+			.flat_map(|text| self.megapattern.captures_iter(text))
+			.filter_map(|captures| LinkFix::new(captures, &self.replacements, false))
 	}
 }
 
@@ -45,7 +53,11 @@ pub struct LinkFix<'l> {
 }
 
 impl<'l> LinkFix<'l> {
-	pub fn new(captures: Captures<'l>, replacements: &[ReplacementRule]) -> Option<Self> {
+	fn new(
+		captures: Captures<'l>,
+		replacements: &[ReplacementRule],
+		was_message: bool,
+	) -> Option<Self> {
 		let index = captures
 			.iter()
 			.skip(1)
@@ -67,8 +79,11 @@ impl<'l> LinkFix<'l> {
 
 		// Whether it found the first version (with `<>`) or the second (without).
 		let embed_suppressed = (offset..offset + replacement.capture_group_count).contains(&index);
-		if embed_suppressed && matches!(replacement.embed_handling, EmbedHandling::Replace) {
-			// Replacing the embed is presumed to be the point, but the original was embed suppressed.
+		if was_message
+			&& embed_suppressed
+			&& matches!(replacement.embed_handling, EmbedHandling::Replace)
+		{
+			// Replacing the embed from a message is presumed to be the point, but the original was embed suppressed.
 			return None;
 		}
 		if !embed_suppressed {
@@ -76,7 +91,9 @@ impl<'l> LinkFix<'l> {
 		}
 		let mut fixed = replacement.apply(&captures, offset);
 
-		if embed_suppressed || matches!(replacement.embed_handling, EmbedHandling::DoNothing) {
+		if embed_suppressed
+			|| was_message && matches!(replacement.embed_handling, EmbedHandling::DoNothing)
+		{
 			fixed = format!("<{fixed}>");
 		}
 
@@ -91,6 +108,8 @@ impl<'l> LinkFix<'l> {
 }
 
 /// How to handle the existing embed and the new link.
+///
+/// On slash command usage, either option should follow whatever the submitted link does (`<>` or no).
 #[derive(Debug, Clone, Copy)]
 enum EmbedHandling {
 	/// If the new link gets an embed, remove the old one.

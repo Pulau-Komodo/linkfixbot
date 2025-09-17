@@ -13,7 +13,7 @@ pub async fn fix_links(context: &Context, interaction: CommandInteraction, link_
 		return;
 	};
 	let output = link_fixer
-		.find_and_fix(content)
+		.find_and_fix_slash(content)
 		.map(|fix| fix.fixed)
 		.join("\n");
 
