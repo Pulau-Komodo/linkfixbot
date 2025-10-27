@@ -3,7 +3,7 @@ https://fixupx.com/{0}
 replace
 
 https://www\.instagram\.com/(p|reels?)/([-0-9a-z_]+)(?:/\S*)?
-https://www.instagramez.com/{0}/{1}/
+https://www.eeinstagram.com/{0}/{1}/
 replace
 
 https://www\.tiktok\.com/@([a-z0-9_\.]+)/video/([0-9]+)\S*
